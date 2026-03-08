@@ -11,3 +11,21 @@ dependencies = [
     "requests>=2.32.5",
     "streamlit>=1.35",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--tb=short -q"
+
+[tool.coverage.run]
+source = ["main", "dashboard"]
+omit = [".claude/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
