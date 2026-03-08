@@ -11,3 +11,8 @@ dependencies = [
     "requests>=2.32.5",
     "streamlit>=1.35",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]

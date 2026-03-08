@@ -378,6 +378,90 @@ def chart_cross_correlogram(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
+def estimate_bp_impact(df: pd.DataFrame, bp_change: float = 50.0) -> dict:
+    """
+    OLS regression at lags 0,3,6,9,12m: DRALACBN_chg = a + b*FEDFUNDS_chg(lag).
+    Returns dict keyed by lag with beta, r_squared, estimated_impact_bps, ci bounds.
+    """
+    rate_change = bp_change / 100.0
+    results = {}
+    for lag in (0, 3, 6, 9, 12):
+        sub = df[["FEDFUNDS_chg", "DRALACBN_chg"]].dropna().copy()
+        sub["FF_lagged"] = sub["FEDFUNDS_chg"].shift(lag)
+        sub = sub[["FF_lagged", "DRALACBN_chg"]].dropna()
+        if len(sub) < 24:
+            continue
+        x = sub["FF_lagged"].values
+        y = sub["DRALACBN_chg"].values
+        n = len(x)
+        x_mean, y_mean = x.mean(), y.mean()
+        ss_xx = ((x - x_mean) ** 2).sum()
+        ss_xy = ((x - x_mean) * (y - y_mean)).sum()
+        if ss_xx == 0:
+            continue
+        beta = ss_xy / ss_xx
+        intercept = y_mean - beta * x_mean
+        y_pred = intercept + beta * x
+        ss_res = ((y - y_pred) ** 2).sum()
+        ss_tot = ((y - y_mean) ** 2).sum()
+        r_squared = 1.0 - ss_res / ss_tot if ss_tot != 0 else 0.0
+        se_beta = np.sqrt(ss_res / (n - 2) / ss_xx) if n > 2 else np.nan
+        estimated = beta * rate_change
+        ci_lo = (beta - 1.96 * se_beta) * rate_change
+        ci_hi = (beta + 1.96 * se_beta) * rate_change
+        results[lag] = dict(
+            beta=beta, r_squared=r_squared, n_obs=n,
+            estimated_impact_bps=estimated * 100,
+            ci_lower_bps=ci_lo * 100,
+            ci_upper_bps=ci_hi * 100,
+        )
+    return results
+
+
+def chart_bp_impact(results: dict, bp_change: float = 50.0) -> go.Figure:
+    """Bar chart of estimated delinquency impact per lag with 95% CI error bars."""
+    lags = sorted(results.keys())
+    impacts = [results[l]["estimated_impact_bps"] for l in lags]
+    ci_lo   = [results[l]["ci_lower_bps"] for l in lags]
+    ci_hi   = [results[l]["ci_upper_bps"] for l in lags]
+    r2      = [results[l]["r_squared"] for l in lags]
+
+    err_minus = [imp - lo for imp, lo in zip(impacts, ci_lo)]
+    err_plus  = [hi - imp for imp, hi in zip(impacts, ci_hi)]
+    bar_colors = [COLORS["accent_red"] if v > 0 else COLORS["accent_blue"] for v in impacts]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=[f"{l}m lag" for l in lags],
+        y=impacts,
+        error_y=dict(type="data", symmetric=False,
+                     array=err_plus, arrayminus=err_minus,
+                     color="rgba(255,255,255,0.5)", thickness=1.5, width=6),
+        marker_color=bar_colors,
+        text=[f"R²={r:.3f}" for r in r2],
+        textposition="outside",
+        textfont=dict(size=10, color="white"),
+        hovertemplate=(
+            "Lag: %{x}<br>"
+            "Est. impact: %{y:+.2f} bps<br>"
+            "<extra></extra>"
+        ),
+        name=f"+{bp_change:.0f}bp shock",
+    ))
+    fig.add_hline(y=0, line=dict(color="rgba(255,255,255,0.3)", dash="dot", width=1))
+
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor=COLORS["background"],
+        plot_bgcolor=COLORS["card"],
+        xaxis=dict(title="Rate Change Lag", gridcolor="#1e2130"),
+        yaxis=dict(title="Estimated Δ Delinquency (bps)", gridcolor="#1e2130"),
+        margin=dict(l=0, r=0, t=10, b=0),
+        showlegend=False,
+    )
+    return fig
+
+
 def chart_risk_gauge(score: int) -> go.Figure:
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
@@ -544,6 +628,63 @@ def main():
         + "</div>",
         unsafe_allow_html=True,
     )
+
+    # ── 50bp Impact Estimation ────────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("<div class='section-label'>+50 Basis Point Rate Shock — Estimated Delinquency Impact</div>",
+                unsafe_allow_html=True)
+    st.markdown(
+        "<div style='color:#8b92a5;font-size:11px;margin-bottom:8px'>"
+        "OLS regression of monthly delinquency changes on lagged Fed Funds changes "
+        "(1990–present). Error bars = 95% confidence interval. R² shown above each bar.</div>",
+        unsafe_allow_html=True,
+    )
+
+    bp_results = estimate_bp_impact(df, bp_change=50.0)
+    if bp_results:
+        bp_left, bp_right = st.columns([2, 1])
+        with bp_left:
+            st.plotly_chart(chart_bp_impact(bp_results, bp_change=50.0),
+                            use_container_width=True, config={"displayModeBar": False})
+
+        with bp_right:
+            best_lag = max(bp_results, key=lambda l: bp_results[l]["r_squared"])
+            best = bp_results[best_lag]
+            st.markdown(
+                f"<div style='background:{COLORS[\"card\"]};border-radius:10px;"
+                f"padding:16px 20px;border-left:3px solid {COLORS[\"accent_red\"]};'>"
+                f"<div class='metric-label'>Best-fit lag</div>"
+                f"<div class='metric-value' style='font-size:22px'>{best_lag} months</div>"
+                f"<div style='color:#8b92a5;font-size:12px;margin-top:8px'>"
+                f"R² = {best['r_squared']:.3f}</div>"
+                f"<hr style='border-color:#2a2d3a;margin:12px 0'>"
+                f"<div class='metric-label'>Estimated Δ Delinquency</div>"
+                f"<div class='metric-value' style='font-size:26px;color:{COLORS[\"accent_red\"]}'>"
+                f"{best['estimated_impact_bps']:+.2f} bps</div>"
+                f"<div style='color:#8b92a5;font-size:11px;margin-top:4px'>"
+                f"95% CI: {best['ci_lower_bps']:+.2f} to {best['ci_upper_bps']:+.2f} bps</div>"
+                f"<hr style='border-color:#2a2d3a;margin:12px 0'>"
+                f"<div style='color:#8b92a5;font-size:11px;line-height:1.6'>"
+                f"A +50bp Fed Funds rate increase is historically associated with a "
+                f"<b style='color:white'>{best['estimated_impact_bps']:+.2f}bps</b> change in the "
+                f"consumer loan delinquency rate ~{best_lag} months later. "
+                f"Estimates reflect full-sample averages and will vary across credit regimes.</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            rows = []
+            for lag in sorted(bp_results.keys()):
+                r = bp_results[lag]
+                rows.append({
+                    "Lag": f"{lag}m",
+                    "β (pp/pp)": f"{r['beta']:.4f}",
+                    "R²": f"{r['r_squared']:.3f}",
+                    "Est. Impact": f"{r['estimated_impact_bps']:+.2f} bps",
+                    "N": r["n_obs"],
+                })
+            st.dataframe(rows, use_container_width=True, hide_index=True)
 
     st.markdown(
         "<div style='color:#3a3f52;font-size:10px;text-align:center;margin-top:24px'>"

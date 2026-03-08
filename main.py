@@ -127,6 +127,109 @@ def flag_risk(df: pd.DataFrame) -> pd.DataFrame:
     return df, flags
 
 
+# ── Basis-point impact estimation ─────────────────────────────────────────────
+
+def estimate_bp_impact(df: pd.DataFrame, bp_change: float = 50.0) -> dict:
+    """
+    Estimate the expected change in the consumer loan delinquency rate from a
+    bp_change basis-point move in the Fed Funds rate, using OLS regression at
+    lags 0, 3, 6, 9, and 12 months.
+
+    Returns a dict keyed by lag (int months) with regression results:
+      beta, intercept, r_squared, se_beta,
+      estimated_impact_bps, ci_lower_bps, ci_upper_bps, n_obs
+    """
+    rate_change = bp_change / 100.0  # basis points → percentage points
+    results = {}
+
+    for lag in (0, 3, 6, 9, 12):
+        sub = df[["FEDFUNDS_chg", "DRALACBN_chg"]].dropna().copy()
+        sub["FF_lagged"] = sub["FEDFUNDS_chg"].shift(lag)
+        sub = sub[["FF_lagged", "DRALACBN_chg"]].dropna()
+
+        if len(sub) < 24:
+            continue
+
+        x = sub["FF_lagged"].values
+        y = sub["DRALACBN_chg"].values
+        n = len(x)
+
+        x_mean, y_mean = x.mean(), y.mean()
+        ss_xx = ((x - x_mean) ** 2).sum()
+        ss_xy = ((x - x_mean) * (y - y_mean)).sum()
+
+        if ss_xx == 0:
+            continue
+
+        beta = ss_xy / ss_xx
+        intercept = y_mean - beta * x_mean
+        y_pred = intercept + beta * x
+        ss_res = ((y - y_pred) ** 2).sum()
+        ss_tot = ((y - y_mean) ** 2).sum()
+        r_squared = 1.0 - ss_res / ss_tot if ss_tot != 0 else 0.0
+        se_beta = np.sqrt(ss_res / (n - 2) / ss_xx) if n > 2 else np.nan
+
+        estimated_impact = beta * rate_change
+        ci_lower = (beta - 1.96 * se_beta) * rate_change
+        ci_upper = (beta + 1.96 * se_beta) * rate_change
+
+        results[lag] = {
+            "beta": beta,
+            "intercept": intercept,
+            "r_squared": r_squared,
+            "se_beta": se_beta,
+            "estimated_impact_bps": estimated_impact * 100,   # pp → bps
+            "ci_lower_bps": ci_lower * 100,
+            "ci_upper_bps": ci_upper * 100,
+            "n_obs": n,
+        }
+
+    return results
+
+
+def report_bp_impact(df: pd.DataFrame, bp_change: float = 50.0):
+    print_section(
+        f"ESTIMATED IMPACT OF +{bp_change:.0f}bp RATE INCREASE ON DELINQUENCY RATES"
+    )
+    print(f"  Method: OLS regression  DRALACBN_chg = a + b × FEDFUNDS_chg(lag N months)")
+    print(f"  Rate shock applied: +{bp_change:.0f}bp (+{bp_change / 100:.2f}pp)")
+    print(f"  95% confidence intervals (normal approximation)\n")
+
+    results = estimate_bp_impact(df, bp_change)
+    if not results:
+        print("  Insufficient data to estimate impact.")
+        return
+
+    print(f"  {'Lag':>5}  {'Beta (pp/pp)':>13}  {'R²':>6}  "
+          f"{'Est. Impact':>13}  {'95% CI (bps)':>28}  {'N':>4}")
+    print(f"  {'-'*80}")
+
+    for lag, res in sorted(results.items()):
+        lag_label = f"{lag}m"
+        ci_str = f"[{res['ci_lower_bps']:+.2f}, {res['ci_upper_bps']:+.2f}]"
+        print(
+            f"  {lag_label:>5}  {res['beta']:>13.5f}  {res['r_squared']:>6.3f}  "
+            f"{res['estimated_impact_bps']:>+12.2f}bps  {ci_str:>28}  {res['n_obs']:>4}"
+        )
+
+    best_lag = max(results, key=lambda l: results[l]["r_squared"])
+    best = results[best_lag]
+    print()
+    print(f"  Best-fit lag: {best_lag} months  (R² = {best['r_squared']:.3f})")
+    print(
+        f"  Interpretation: a +{bp_change:.0f}bp rate hike is associated with a "
+        f"{best['estimated_impact_bps']:+.2f}bps change in the consumer loan delinquency"
+    )
+    print(
+        f"  rate approximately {best_lag} month(s) later "
+        f"(95% CI: {best['ci_lower_bps']:+.2f}bps to {best['ci_upper_bps']:+.2f}bps)."
+    )
+    print(
+        f"\n  Note: estimates reflect the average historical relationship; actual outcomes"
+        f"\n  depend on portfolio composition, underwriting standards, and macro context."
+    )
+
+
 # ── Reporting ─────────────────────────────────────────────────────────────────
 
 def print_section(title: str):
@@ -292,6 +395,7 @@ def main():
     report_rolling_correlations(df)
     report_correlation_summary(df)
     report_risk_periods(df, flags)
+    report_bp_impact(df)
 
 
 if __name__ == "__main__":
