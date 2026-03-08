@@ -16,17 +16,16 @@ description: >
 You are fetching live macroeconomic data from the St. Louis Fed's FRED API and
 presenting it in a clean, readable format.
 
-## Step 1 — Find the API key
+## Step 1 — Verify the API key exists
 
-Search the user's shell config files for their FRED API key. Run this:
+Check that the `FRED_API_KEY` environment variable is set (do **not** print its value):
 
 ```bash
-grep -h "FRED" ~/.bashrc ~/.zshrc 2>/dev/null | grep -i "api_key\|FRED_API" | head -5
+[ -n "$FRED_API_KEY" ] && echo "FRED_API_KEY is set" || echo "FRED_API_KEY is NOT set"
 ```
 
-Extract the key value from whatever line is returned (it will look like
-`export FRED_API_KEY="..."` or similar). If no key is found, tell the user and
-ask them to set `FRED_API_KEY` in their `.bashrc` or `.zshrc`.
+If the variable is not set, tell the user to set `export FRED_API_KEY="..."` in
+their `.zshrc` (or `.bashrc`).
 
 ## Step 2 — Fetch the 5 series
 
@@ -36,7 +35,7 @@ ascending. Run all 5 fetches in a single bash command (background jobs +
 
 ```bash
 BASE="https://api.stlouisfed.org/fred/series/observations"
-KEY="<api_key>"
+KEY="${FRED_API_KEY}"
 PARAMS="&api_key=${KEY}&file_type=json&sort_order=desc&limit=12"
 
 curl -s "${BASE}?series_id=FEDFUNDS${PARAMS}" -o /tmp/fred_FEDFUNDS.json &

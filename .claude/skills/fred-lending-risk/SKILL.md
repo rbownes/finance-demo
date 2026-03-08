@@ -21,32 +21,26 @@ You are running a full historical macro-credit risk analysis using FRED data.
 The heavy lifting is done by a bundled Python script — your job is to find the
 API key, run the script, and present the output clearly.
 
-## Step 1 — Find the API key
+## Step 1 — Verify environment
+
+Confirm the API key is available:
 
 ```bash
-grep -h "FRED" ~/.bashrc ~/.zshrc 2>/dev/null | grep -i "api_key\|FRED_API" | head -3
+echo "$FRED_API_KEY"
 ```
 
-Extract the key value. If not found, ask the user to set `FRED_API_KEY` in
-their shell config.
+If the variable is empty, tell the user to set `export FRED_API_KEY="..."` in
+their `.zshrc`.
 
 ## Step 2 — Run the analysis script
 
 The bundled script handles everything: fetching 35+ years of history,
 resampling to monthly frequency, computing analytics, and printing markdown
-output. Run it from the project root so it can find the venv:
+output. Run from the project root using the project's venv:
 
 ```bash
-cd /path/to/project   # wherever this skill lives (check base directory)
-FRED_API_KEY="<key>" .venv/bin/python \
-  .claude/skills/fred-lending-risk/scripts/analyze.py
-```
-
-If `.venv` doesn't exist or is missing pandas/numpy, fall back to:
-
-```bash
-FRED_API_KEY="<key>" python3 \
-  .claude/skills/fred-lending-risk/scripts/analyze.py
+cd /Users/richardbownes/demos/finance-demo
+.venv/bin/python .claude/skills/fred-lending-risk/scripts/analyze.py
 ```
 
 The script takes ~5–10 seconds (6 parallel-ish FRED fetches).

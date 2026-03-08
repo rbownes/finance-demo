@@ -141,8 +141,7 @@ def chart_yield_curve(df):
 
     fig = make_subplots(
         rows=2, cols=1, shared_xaxes=True,
-        row_heights=[0.65, 0.35], vertical_spacing=0.04,
-        subplot_titles=("", "Consumer Loan Delinquency Rate"),
+        row_heights=[0.65, 0.35], vertical_spacing=0.08,
     )
 
     fig.add_trace(go.Scatter(x=df.index, y=df["DGS10"], name="10Y Treasury",
@@ -162,10 +161,8 @@ def chart_yield_curve(df):
     fig.update_layout(
         shapes=shapes,
         template="plotly_dark", paper_bgcolor=COLORS["bg"], plot_bgcolor=COLORS["card"],
-        legend=dict(orientation="h", y=1.06, x=0, font=dict(size=11)),
-        hovermode="x unified", margin=dict(l=0, r=0, t=30, b=0),
-        title=dict(text="Yield Curve & Delinquency — with NBER Recession Bands (red) and Inversion Periods (dark red)",
-                   font=dict(size=13, color=COLORS["muted"])),
+        legend=dict(orientation="h", y=1.02, x=0, font=dict(size=11)),
+        hovermode="x unified", margin=dict(l=60, r=10, t=40, b=10),
     )
     fig.update_yaxes(row=1, col=1, title_text="Rate (%)", gridcolor="#1e2130")
     fig.update_yaxes(row=2, col=1, title_text="Delinquency (%)", gridcolor="#1e2130")
@@ -210,8 +207,8 @@ def chart_corr_heatmap(df):
             font=dict(size=13, color=COLORS["muted"])),
         xaxis=dict(title="Quarter", tickangle=-45, tickfont=dict(size=9),
                    gridcolor="#1e2130", nticks=20),
-        yaxis=dict(title="Rate Change Lag", autorange="reversed", gridcolor="#1e2130"),
-        margin=dict(l=0, r=0, t=60, b=60),
+        yaxis=dict(title="Change Lag", autorange="reversed", gridcolor="#1e2130"),
+        margin=dict(l=60, r=10, t=70, b=60),
     )
     return fig
 
@@ -256,7 +253,7 @@ def chart_risk_gauge(df):
     ))
     fig.update_layout(
         template="plotly_dark", paper_bgcolor=COLORS["bg"], plot_bgcolor=COLORS["card"],
-        margin=dict(l=20, r=20, t=40, b=20),
+        margin=dict(l=20, r=20, t=60, b=10),
     )
     return fig
 
@@ -448,8 +445,8 @@ def build_html(fig_yc, fig_heatmap, fig_gauge, fig_timeline, summary_text, as_of
   </div>
   <div>
     <div class="section-label">Risk Regime Indicator</div>
-    <div class="chart-box" style="display:grid;grid-template-rows:200px 220px;gap:4px">
-      {fig_html(fig_gauge, "200px")}
+    <div class="chart-box" style="display:grid;grid-template-rows:220px 220px;gap:0">
+      {fig_html(fig_gauge, "220px")}
       {fig_html(fig_timeline, "220px")}
     </div>
   </div>
@@ -500,10 +497,11 @@ def main():
     print(f"\n✓ Dashboard saved to: {out_path}")
     print(f"  Open with:  xdg-open \"{out_path}\"")
 
-    # Try to open automatically
+    # Try to open automatically (macOS = open, Linux = xdg-open)
     try:
-        import subprocess
-        subprocess.Popen(["xdg-open", str(out_path)],
+        import subprocess, platform
+        opener = "open" if platform.system() == "Darwin" else "xdg-open"
+        subprocess.Popen([opener, str(out_path)],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception:
         pass

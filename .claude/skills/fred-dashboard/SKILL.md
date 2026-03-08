@@ -19,30 +19,24 @@ U.S. macro lending-risk indicators from FRED. The bundled Python script handles
 everything — fetching ~35 years of history, aligning time series, computing
 analytics, building four Plotly charts, and writing a standalone HTML file.
 
-## Step 1 — Find the API key
+## Step 1 — Verify environment
+
+Confirm the API key and venv are available:
 
 ```bash
-grep -h "FRED" ~/.bashrc ~/.zshrc 2>/dev/null | grep -i "api_key\|FRED_API" | head -3
+echo "$FRED_API_KEY"
 ```
 
-Extract the key. If not found, ask the user to set `FRED_API_KEY` in their
-shell config.
+If the variable is empty, tell the user to set `export FRED_API_KEY="..."` in
+their `.zshrc`.
 
 ## Step 2 — Run the dashboard script
 
-Run from the project root so the venv is found:
+Run from the project root using the project's venv:
 
 ```bash
-cd /home/motoko/Projects/fin-test
-FRED_API_KEY="<key>" .venv/bin/python \
-  .claude/skills/fred-dashboard/scripts/generate_dashboard.py
-```
-
-If `.venv` doesn't exist or is missing dependencies, fall back to:
-
-```bash
-FRED_API_KEY="<key>" python3 \
-  .claude/skills/fred-dashboard/scripts/generate_dashboard.py
+cd /Users/richardbownes/demos/finance-demo
+.venv/bin/python .claude/skills/fred-dashboard/scripts/generate_dashboard.py
 ```
 
 The script takes ~10–15 seconds (6 FRED fetches + chart rendering).
@@ -73,7 +67,7 @@ If `xdg-open` fails (headless environment), just report the file path.
 - **Missing module** (`pandas`, `numpy`, `plotly`, `requests`): tell the user
   to run `uv add pandas numpy plotly requests` from the project root
 - **FRED HTTP 400**: wrong API key — ask user to verify `FRED_API_KEY`
-- **xdg-open not found**: normal in headless/SSH environments; just report the
-  file path so the user can copy it to their browser
+- **Browser open fails**: on headless/SSH environments the auto-open may fail;
+  just report the file path so the user can open it manually
 - **Script stderr warnings**: the script suppresses FutureWarnings; any other
   warnings can be noted but are usually non-fatal
